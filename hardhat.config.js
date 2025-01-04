@@ -1,6 +1,10 @@
-require("@nomicfoundation/hardhat-toolbox");
+require("hardhat-deploy");
+require("@nomiclabs/hardhat-ethers");
+require("@nomiclabs/hardhat-etherscan");
 
-/** @type import('hardhat/config').HardhatUserConfig */
+// Load environment variables from .env file. Suppress warnings if dotenv is missing.
+require("dotenv").config({ silent: true });
+
 module.exports = {
   solidity: {
       compilers: [
@@ -15,7 +19,7 @@ module.exports = {
                                                       networks: {
                                                           hardhat: {
                                                                 forking: {
-                                                                        url: https://eth-mainnet.g.alchemy.com/v2/WcDsq7m0lStFkxdphGwFAgtJeGbrGVpd, // Replace with your Alchemy URL
+                                                                        url: "https://eth-mainnet.g.alchemy.com/v2/WcDsq7m0lStFkxdphGwFAgtJeGbrGVpd", // YOUR ALCHEMY URL!
                                                                               }
                                                                                   }
                                                                                     },
