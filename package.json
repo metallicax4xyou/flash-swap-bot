@@ -1,0 +1,18 @@
+{
+  "name": "flash-swap-bot",
+  "version": "1.0.0",
+  "description": "A simple Uniswap V3 flash swap arbitrage bot for educational purposes.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.4",
+    "hardhat": "^2.22.17"
+  }
+}
