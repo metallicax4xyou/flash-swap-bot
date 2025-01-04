@@ -15,7 +15,7 @@ module.exports = {
                                                       networks: {
                                                           hardhat: {
                                                                 forking: {
-                                                                        url: "YOUR_ALCHEMY_URL", // Replace with your Alchemy URL
+                                                                        url: https://eth-mainnet.g.alchemy.com/v2/WcDsq7m0lStFkxdphGwFAgtJeGbrGVpd, // Replace with your Alchemy URL
                                                                               }
                                                                                   }
                                                                                     },
