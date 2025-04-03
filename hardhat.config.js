@@ -1,3 +1,4 @@
+require("@nomicfoundation/hardhat-toolbox");
 require("hardhat-deploy");
 // require("@nomiclabs/hardhat-ethers"); // Commented out: Older plugin, conflicts with hardhat-toolbox's ethers v6
 // require("@nomiclabs/hardhat-etherscan"); // Commented out: Older plugin, replaced by hardhat-verify in toolbox
