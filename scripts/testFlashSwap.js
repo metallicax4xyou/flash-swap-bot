@@ -17,10 +17,9 @@ async function main() {
                                 const uniswapV3QuoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
 
                                     // 4. Deploy the FlashSwap Contract
-                                        const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress, uniswapV3QuoterAddress);
-                                            await flashSwap.waitForDeployment();
-                                                const flashSwapAddress = await flashSwap.getAddress();
-                                                    console.log("FlashSwap deployed to:", flashSwapAddress);
+                                        const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress, uniswapV3QuoterAddress
+                                            const flashSwapAddress = await flashSwap.getAddress();
+                                                console.log("FlashSwap deployed to:", flashSwapAddress);
 
                                                         // 5. Define Pool Address
                                                             // Replace with the actual pool address you want to interact with
