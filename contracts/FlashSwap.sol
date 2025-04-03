@@ -8,7 +8,7 @@ import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3FlashCallback.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "hardhat/console.sol"; // Uncomment for debugging if needed
+import "hardhat/console.sol"; // Import for logging
 
 contract FlashSwap is IUniswapV3FlashCallback {
 
@@ -55,48 +55,52 @@ contract FlashSwap is IUniswapV3FlashCallback {
         FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData));
 
         // --- Security Check ---
-        // Ensure the callback is coming ONLY from the pool we initiated the flash loan with.
         require(msg.sender == decodedData.poolAddress, "FlashSwap: Callback from unexpected pool");
-        // Note: Inside the callback, `msg.sender` IS the address of the Uniswap V3 Pool contract.
 
-        // Get token addresses directly from the pool contract for reliability
         IUniswapV3Pool pool = IUniswapV3Pool(decodedData.poolAddress);
         address token0 = pool.token0();
         address token1 = pool.token1();
 
-        // Calculate the total amounts required for repayment (amount borrowed + fee)
         uint totalAmount0ToRepay = decodedData.amount0Borrowed + fee0;
         uint totalAmount1ToRepay = decodedData.amount1Borrowed + fee1;
 
+        // --- Logging Start ---
+        console.log("--- Inside uniswapV3FlashCallback ---");
+        console.log("Pool Address (msg.sender):", msg.sender);
+        console.log("Token0:", token0);
+        console.log("Token1:", token1);
+        console.log("Fee0:", fee0);
+        console.log("Fee1:", fee1); // Check this value!
+        console.log("Amount0 Borrowed:", decodedData.amount0Borrowed);
+        console.log("Amount1 Borrowed:", decodedData.amount1Borrowed);
+        console.log("Total Token0 to Repay:", totalAmount0ToRepay);
+        console.log("Total Token1 to Repay:", totalAmount1ToRepay); // Loan + Fee
+
         // --- ARBITRAGE LOGIC GOES HERE ---
-        // 1. Identify which token(s) were borrowed (amount > 0).
-        // 2. Approve the `swapRouter` to spend the borrowed token(s) from this contract:
-        //    `IERC20(borrowedToken).approve(address(swapRouter), amountBorrowed);`
-        // 3. Perform swap(s) using `swapRouter` to generate profit (e.g., swap borrowed WETH for USDC on Pool A, then swap USDC back to WETH on Pool B).
-        // 4. Use `decodedData.params` if you passed extra instructions for the arbitrage.
-        // 5. The key goal: Ensure this contract's balance of the borrowed token(s) is >= the `totalAmountXToRepay` AFTER the swaps.
-        //    `require(IERC20(tokenX).balanceOf(address(this)) >= totalAmountXToRepay, "Insufficient funds after arbitrage");`
+        // Placeholder for where swaps would occur
 
         // --- Repayment Approval ---
-        // After successful arbitrage, approve the pool contract (`msg.sender`) to pull the repayment amount + fee.
-        // The pool contract will call `transferFrom` on the token contract to take the funds from this contract.
-
         if (totalAmount0ToRepay > 0) {
-            // Ensure sufficient balance exists (crucial check after arbitrage)
-            require(IERC20(token0).balanceOf(address(this)) >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
-            // Approve the pool (msg.sender) to withdraw the repayment amount
-            IERC20(token0).approve(msg.sender, totalAmount0ToRepay);
-            // console.log("Approved pool", msg.sender, "to take", totalAmount0ToRepay, "of token0", token0);
+             console.log("Checking Token0 balance...");
+             uint currentToken0Balance = IERC20(token0).balanceOf(address(this));
+             console.log("Current Token0 Balance:", currentToken0Balance);
+             require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
+             console.log("Token0 balance sufficient. Approving pool for Token0...");
+             IERC20(token0).approve(msg.sender, totalAmount0ToRepay);
+             console.log("Token0 Approved.");
         }
 
         if (totalAmount1ToRepay > 0) {
-            require(IERC20(token1).balanceOf(address(this)) >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
-            IERC20(token1).approve(msg.sender, totalAmount1ToRepay);
-            // console.log("Approved pool", msg.sender, "to take", totalAmount1ToRepay, "of token1", token1);
+             console.log("Checking Token1 balance...");
+             uint currentToken1Balance = IERC20(token1).balanceOf(address(this)); // Get current balance
+             console.log("Current Token1 Balance:", currentToken1Balance); // Log balance BEFORE check
+             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment"); // Balance check
+             console.log("Token1 balance sufficient. Approving pool for Token1..."); // Log if check passes
+             IERC20(token1).approve(msg.sender, totalAmount1ToRepay); // Approve call
+             console.log("Token1 Approved."); // Log if approval done
         }
 
-        // If the require checks pass and approvals are done, the pool's subsequent `transferFrom` call will succeed.
-        // If any require fails, the entire transaction initiated by `initiateFlashSwap` reverts.
+        console.log("--- Exiting uniswapV3FlashCallback ---"); // Log end of callback
     }
 
 
@@ -109,35 +113,30 @@ contract FlashSwap is IUniswapV3FlashCallback {
      * @param _params Optional extra data (encoded bytes) to pass to the callback for custom logic.
      */
     function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external {
-        // Ensure only one token amount is non-zero (standard flash swap practice)
         require((_amount0 > 0 && _amount1 == 0) || (_amount1 > 0 && _amount0 == 0), "FlashSwap: Borrow only one token");
 
-        // Prepare the data struct to be passed to the callback
         FlashCallbackData memory callbackData = FlashCallbackData({
             amount0Borrowed: _amount0,
             amount1Borrowed: _amount1,
-            caller: msg.sender,          // Store the original caller's address
-            poolAddress: _poolAddress,   // Store pool address for verification
-            params: _params              // Pass through any extra data
+            caller: msg.sender,
+            poolAddress: _poolAddress,
+            params: _params
         });
 
-        // Trigger the flash loan on the specified pool
         IUniswapV3Pool(_poolAddress).flash(
-            address(this),              // The recipient of the loan and caller of the callback is this contract
-            _amount0,                   // Amount of token0 to borrow
-            _amount1,                   // Amount of token1 to borrow
-            abi.encode(callbackData)    // Encode the struct to pass as bytes data
+            address(this),
+            _amount0,
+            _amount1,
+            abi.encode(callbackData)
         );
     }
 
     // --- Utility Functions ---
 
-    // Withdraw ETH sent to the contract (only owner)
     function withdrawEther() external onlyOwner {
         payable(owner).transfer(address(this).balance);
     }
 
-    // Withdraw specific ERC20 tokens sent to the contract (only owner)
     function withdrawToken(address tokenAddress) external onlyOwner {
         IERC20 token = IERC20(tokenAddress);
         uint balance = token.balanceOf(address(this));
@@ -145,7 +144,5 @@ contract FlashSwap is IUniswapV3FlashCallback {
         token.transfer(owner, balance);
     }
 
-    // Allow the contract to receive ETH directly
     receive() external payable {}
-    // fallback() external payable {} // Optional fallback if needed
 }
