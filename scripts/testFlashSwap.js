@@ -33,7 +33,6 @@ async function main() {
     console.log("Deploying FlashSwap...");
     // Ensure only ONE argument is passed to match the current constructor
     const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // <<< CORRECTED CALL
-    const flashSwapAddress = flashSwap.target;
     console.log("FlashSwap deployed to:", flashSwapAddress);
 
     // --- NO Pre-funding of the FlashSwap contract ---
