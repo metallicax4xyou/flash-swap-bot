@@ -77,9 +77,7 @@ contract FlashSwap is IUniswapV3FlashCallback {
             uint24 poolFee = pool.fee(); // Get pool fee
 
             IERC20(token1).approve(address(swapRouter), amountIn);
-            // --- SIMPLIFIED LOG ---
-            console.log("Approved SwapRouter for WETH amount:", amountIn); // <<< CORRECTED LOG
-            // --- END SIMPLIFIED LOG ---
+            console.log("Approved SwapRouter for WETH amount:", amountIn); // Corrected log
 
             ISwapRouter.ExactInputSingleParams memory params =
                 ISwapRouter.ExactInputSingleParams({
@@ -95,7 +93,10 @@ contract FlashSwap is IUniswapV3FlashCallback {
             } catch Error(string memory reason) {
                  console.log("Swap Failed! Reason:", reason);
             } catch (bytes memory lowLevelData) {
-                 console.log("Swap Failed! Low level data:", lowLevelData);
+                 // --- COMMENTED OUT UNSUPPORTED LOG ---
+                 // console.log("Swap Failed! Low level data:", lowLevelData); // <<< COMMENTED OUT
+                 console.log("Swap Failed! Reason unknown (low level data)."); // Add alternative log
+                 // --- END COMMENTED OUT ---
             }
             // --- End Try-Catch ---
         }
