@@ -26,37 +26,21 @@ async function main() {
     // 2. Get Contract Factory
     const FlashSwap = await hre.ethers.getContractFactory("FlashSwap");
 
-    // 3. Define Uniswap V3 Router and Quoter Addresses (Mainnet)
+    // 3. Define Uniswap V3 Router Address (Mainnet) - Quoter not needed for this contract version
     const uniswapV3RouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-    const uniswapV3QuoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
+    // const uniswapV3QuoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // Removed from constructor
 
     // 4. Deploy the FlashSwap Contract
     console.log("Deploying FlashSwap...");
-    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress, uniswapV3QuoterAddress);
+    // const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress, uniswapV3QuoterAddress); // Old constructor
+    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // New constructor (only router)
     const flashSwapAddress = flashSwap.target;
     console.log("FlashSwap deployed to:", flashSwapAddress);
 
-    // --- Fund the FlashSwap contract with enough WETH to cover loan + fees for testing ---
-    const WETH_ABI = ["function transfer(address to, uint amount) returns (bool)", "function deposit() payable", "function balanceOf(address) view returns (uint)"];
-    const wethContract = new hre.ethers.Contract(WETH_ADDRESS, WETH_ABI, deployer);
-
-    // Get some WETH for deployer if needed
-    const deployerWethBalance = await wethContract.balanceOf(deployer.address);
-    console.log(`Deployer WETH balance: ${hre.ethers.formatUnits(deployerWethBalance, 18)} WETH`);
-    if (deployerWethBalance < hre.ethers.parseUnits("1.2", 18)) { // Ensure deployer has enough to send
-        console.log("Getting some WETH for deployer by wrapping ETH...");
-        const wrapAmount = hre.ethers.parseUnits("2", 18); // Wrap 2 ETH to be safe
-        const wrapTx = await wethContract.deposit({ value: wrapAmount });
-        await wrapTx.wait();
-        console.log(`New Deployer WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(deployer.address), 18)} WETH`);
-    }
-
-    // Send 1.1 WETH to the FlashSwap contract
-    const initialFundingAmount = hre.ethers.parseUnits("1.1", 18); // <<< CHANGE IS HERE (1.1 WETH)
-    console.log(`Transferring ${hre.ethers.formatUnits(initialFundingAmount, 18)} WETH to FlashSwap contract...`);
-    const transferTx = await wethContract.transfer(flashSwapAddress, initialFundingAmount); // <<< CHANGE IS HERE
-    await transferTx.wait();
-    console.log(`FlashSwap contract WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(flashSwapAddress), 18)} WETH`);
+    // --- NO Pre-funding of the FlashSwap contract --- <<< CHANGE IS HERE
+    const WETH_ABI = ["function balanceOf(address) view returns (uint)"]; // Only need balanceOf now
+    const wethContract = new hre.ethers.Contract(WETH_ADDRESS, WETH_ABI, deployer); // Use deployer provider
+    console.log(`FlashSwap contract initial WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(flashSwapAddress), 18)} WETH`); // Verify it's 0 or near 0
 
 
     // 5. Define Pool Address
@@ -92,36 +76,43 @@ async function main() {
         console.log("Waiting for transaction confirmation...");
         const receipt = await tx.wait();
         console.log("Transaction confirmed in block:", receipt.blockNumber);
-        // Check final balance of FlashSwap contract
+        // Check final balance (will be 0 or dust if transfer failed as expected)
         const finalContractWeth = await wethContract.balanceOf(flashSwapAddress);
         console.log(`FlashSwap contract final WETH balance: ${hre.ethers.formatUnits(finalContractWeth, 18)} WETH`);
-        console.log("✅ Flash swap SUCCEEDED! (Because we pre-funded the contract)");
+        console.log("⚠️ Flash swap SUCCEEDED? (UNEXPECTED - transfer should have failed due to insufficient funds)");
 
     } catch (error) {
-        console.error("\n--- Flash swap transaction failed (UNEXPECTED with pre-funding) ---");
+        console.error("\n--- Flash swap transaction failed (EXPECTED) ---"); // Now expected failure
         console.error("Error executing initiateFlashSwap:");
-        // Try to get more detailed revert reason
         if (error.transactionHash) {
              console.error("  Transaction Hash:", error.transactionHash);
         }
-        let reason = error.reason;
-        if (!reason && error.data) {
+        let reason = error.reason; // Hardhat often populates this directly now
+        if (error.data && !reason) { // Check error.data if reason is missing
              try {
-                 reason = hre.ethers.toUtf8String("0x" + error.data.substring(138));
-             } catch (e) { /* Ignore */ }
+                // Attempt to decode standard Solidity error (Error(string))
+                const ERROR_SELECTOR = "0x08c379a0"; // Keccak256("Error(string)")[:4]
+                if (error.data.startsWith(ERROR_SELECTOR)) {
+                    reason = hre.ethers.AbiCoder.defaultAbiCoder().decode(['string'], "0x" + error.data.substring(10))[0];
+                } else {
+                     // Try simple UTF-8 decoding as fallback
+                     reason = hre.ethers.toUtf8String("0x" + error.data.substring(138));
+                }
+             } catch (e) { /* Ignore decoding errors */ }
         }
          if (reason) {
              console.error("  Revert Reason:", reason);
-        } else if (error.message.includes("reverted with reason string")) {
+        } else if (error.message && error.message.includes("reverted with reason string")) {
              try {
                  reason = error.message.split("reverted with reason string '")[1].split("'")[0];
                  console.error("  Revert Reason:", reason);
              } catch (e) { /* Ignore */ }
         }
-        if (!reason) {
+        if (!reason) { // Fallback if no specific reason found
             console.error("  Error message:", error.message);
         }
-        console.error("\n  This should have succeeded with the pre-funding. Check contract logic (approvals, balance checks) or pool state.");
+        console.error("\n  This failure is EXPECTED because the contract starts with no WETH, performs a swap (losing fees), and cannot repay the loan + fee.");
+        console.error("  Look for 'FlashSwap: Token1 transfer failed...' or similar revert reason.");
         console.error("------------------------------------------------------\n");
     }
 }
