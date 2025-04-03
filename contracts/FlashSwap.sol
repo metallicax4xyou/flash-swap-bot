@@ -51,19 +51,18 @@ contract FlashSwap is IUniswapV3FlashCallback {
 
 
     // --- Initiate Flash Swap ---
-    // Uses a simplified data encoding just for this test
-    function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external {
+    // Uses EMPTY bytes data for this test
+    function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external { // _params is unused now but keep signature
         require((_amount0 > 0 && _amount1 == 0) || (_amount1 > 0 && _amount0 == 0), "FlashSwap: Borrow only one token");
 
-        // Encode SOMETHING simple just to pass non-empty bytes if needed by pool?
-        // Pass pool address for minimal verification if required internally by pool before callback
-        bytes memory minimalData = abi.encode(_poolAddress);
+        // Pass completely empty bytes
+        bytes memory emptyData = bytes('0x'); // <<< USE EMPTY BYTES
 
         IUniswapV3Pool(_poolAddress).flash(
             address(this),
             _amount0,
             _amount1,
-            minimalData // Pass minimal encoded data
+            emptyData // <<< PASS EMPTY BYTES HERE
         );
     }
 
