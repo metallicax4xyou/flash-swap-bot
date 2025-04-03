@@ -39,13 +39,13 @@ contract FlashSwap is IUniswapV3FlashCallback {
     }
 
     // --- Uniswap V3 Flash Callback ---
-    // Uses EXPLICIT TRANSFER
+    // Uses EXPLICIT TRANSFER - RE-ENABLES BALANCE CHECK
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
         bytes calldata data // Expecting encoded FlashCallbackData
     ) external override {
-        console.log("!!! TRANSFER+SWAP TEST Callback Entered !!! Fee0:", fee0, "Fee1:", fee1); // Updated log
+        console.log("!!! FINAL TEST Callback Entered !!! Fee0:", fee0, "Fee1:", fee1); // Updated log
 
         FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData));
         console.log("Decoded Pool Address from data:", decodedData.poolAddress);
@@ -91,12 +91,9 @@ contract FlashSwap is IUniswapV3FlashCallback {
             try swapRouter.exactInputSingle(params) returns (uint amountOut) {
                  console.log("Swap executed. Received USDC (Token0) amount:", amountOut);
             } catch Error(string memory reason) {
-                 console.log("Swap Failed! Reason:", reason);
+                 console.log("Swap Failed! Reason:", reason); // Expect LOK again perhaps
             } catch (bytes memory lowLevelData) {
-                 // --- COMMENTED OUT UNSUPPORTED LOG ---
-                 // console.log("Swap Failed! Low level data:", lowLevelData); // <<< COMMENTED OUT
-                 console.log("Swap Failed! Reason unknown (low level data)."); // Add alternative log
-                 // --- END COMMENTED OUT ---
+                 console.log("Swap Failed! Reason unknown (low level data).");
             }
             // --- End Try-Catch ---
         }
@@ -106,7 +103,7 @@ contract FlashSwap is IUniswapV3FlashCallback {
              console.log("Checking Token0 balance for transfer...");
              uint currentToken0Balance = IERC20(token0).balanceOf(address(this));
              console.log("Current Token0 Balance:", currentToken0Balance);
-             require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
+             require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment"); // Keep this enabled
              console.log("Token0 balance sufficient. Transferring token0 to pool...");
              bool sent0 = IERC20(token0).transfer(poolAddress, totalAmount0ToRepay);
              require(sent0, "FlashSwap: Token0 transfer failed");
@@ -116,18 +113,19 @@ contract FlashSwap is IUniswapV3FlashCallback {
         if (totalAmount1ToRepay > 0) {
              console.log("Checking Token1 balance for transfer...");
              uint currentToken1Balance = IERC20(token1).balanceOf(address(this));
-             console.log("Current Token1 Balance:", currentToken1Balance);
-             // >>> BALANCE CHECK IS STILL COMMENTED OUT FOR THIS TEST <<<
-             // require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
-             console.log("WARN: Skipping Token1 balance check for test."); // Keep warning
+             console.log("Current Token1 Balance:", currentToken1Balance); // Will be < amount borrowed if swap succeeded, or = amount borrowed if swap failed (LOK)
 
-             console.log("Attempting to transfer token1 to pool...");
+             // >>> RE-ENABLE BALANCE CHECK <<<
+             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment"); // <<< THIS SHOULD FAIL NOW
+             // >>> END RE-ENABLE <<<
+
+             console.log("Token1 balance sufficient. Transferring token1 to pool..."); // This shouldn't print
              bool sent1 = IERC20(token1).transfer(poolAddress, totalAmount1ToRepay);
-             require(sent1, "FlashSwap: Token1 transfer failed (EXPECTED without pre-funding/profit)"); // This require should fail
+             require(sent1, "FlashSwap: Token1 transfer failed"); // This shouldn't be reached
              console.log("Token1 Transferred."); // This shouldn't print
         }
 
-        console.log("--- Exiting TRANSFER+SWAP TEST uniswapV3FlashCallback ---");
+        console.log("--- Exiting FINAL TEST uniswapV3FlashCallback ---"); // This shouldn't print
     }
 
 
