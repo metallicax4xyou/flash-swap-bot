@@ -16,13 +16,13 @@ contract FlashSwap is IUniswapV3FlashCallback {
     IQuoter public immutable quoter;
     address public owner;
 
-    // Restore struct, but it won't be fully used as we send 0x data for now
+    // Restore struct definition
     struct FlashCallbackData {
-        uint amount0Borrowed; // We won't get these from data if we send 0x
-        uint amount1Borrowed; // We won't get these from data if we send 0x
-        address caller;       // We won't get these from data if we send 0x
-        address poolAddress;  // We won't get these from data if we send 0x
-        bytes params;         // We won't get these from data if we send 0x
+        uint amount0Borrowed;
+        uint amount1Borrowed;
+        address caller;
+        address poolAddress; // Passed for verification
+        bytes params;
     }
 
     modifier onlyOwner() {
@@ -37,82 +37,92 @@ contract FlashSwap is IUniswapV3FlashCallback {
     }
 
     // --- Uniswap V3 Flash Callback ---
-    // RESTORED LOGIC - BUT data DECODING WILL LIKELY FAIL or be meaningless if initiate sends 0x
-    // WE NEED TO CALCULATE REQUIRED AMOUNTS DIFFERENTLY FOR THIS TEST
+    // Restore full logic WITH data decoding
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
-        bytes calldata data // Received data (currently expected to be 0x)
+        bytes calldata data // Expecting encoded FlashCallbackData
     ) external override {
-        console.log("!!! FULL Callback Entered !!! Fee0:", fee0, "Fee1:", fee1);
+        console.log("!!! FULL+DATA Callback Entered !!! Fee0:", fee0, "Fee1:", fee1);
 
-        // --- PROBLEM: Cannot decode FlashCallbackData from 0x ---
-        // FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData)); // This will fail if data is 0x
+        // Decode the data we passed from initiateFlashSwap
+        FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData));
+        console.log("Decoded Pool Address from data:", decodedData.poolAddress);
+        console.log("Decoded Amount0 Borrowed:", decodedData.amount0Borrowed);
+        console.log("Decoded Amount1 Borrowed:", decodedData.amount1Borrowed);
+        console.log("Decoded Caller:", decodedData.caller);
 
-        // --- WORKAROUND FOR THIS TEST: Get pool/tokens and calculate repayment based only on fees ---
-        // Since initiateFlashSwap sends known amounts (0 and 1 WETH), we use those + fees
-        // Security check: Is the pool calling us actually a UniV3 pool? (Basic check)
-        address poolAddress = msg.sender; // In callback, msg.sender is the pool
-        IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
+
+        // --- Security Check ---
+        // Ensure the callback is coming ONLY from the pool we stored in the data.
+        require(msg.sender == decodedData.poolAddress, "FlashSwap: Callback from unexpected pool");
+        console.log("Pool address matches msg.sender.");
+
+        // Get token addresses directly from the pool contract
+        IUniswapV3Pool pool = IUniswapV3Pool(msg.sender); // Use msg.sender (verified pool)
         address token0 = pool.token0();
         address token1 = pool.token1();
 
-        // Determine amounts borrowed based on which fee is non-zero (or assume based on script)
-        // For this test, we know script called initiateFlashSwap with _amount0=0, _amount1=1 WETH
-        uint amount0Borrowed = 0; // Assume based on script call
-        uint amount1Borrowed = 1 ether; // Assume 1 WETH based on script call
+        // Calculate the total amounts required for repayment using DECODED amounts
+        uint totalAmount0ToRepay = decodedData.amount0Borrowed + fee0;
+        uint totalAmount1ToRepay = decodedData.amount1Borrowed + fee1;
 
-        uint totalAmount0ToRepay = amount0Borrowed + fee0;
-        uint totalAmount1ToRepay = amount1Borrowed + fee1;
-
-        console.log("Pool Address (msg.sender):", poolAddress);
+        console.log("Pool Address (msg.sender):", msg.sender);
         console.log("Token0:", token0);
         console.log("Token1:", token1);
-        console.log("Assumed Amount0 Borrowed:", amount0Borrowed);
-        console.log("Assumed Amount1 Borrowed:", amount1Borrowed);
         console.log("Total Token0 to Repay:", totalAmount0ToRepay);
         console.log("Total Token1 to Repay:", totalAmount1ToRepay);
 
         // --- ARBITRAGE LOGIC GOES HERE ---
+        // (Using decodedData.params if needed)
 
-        // --- Repayment Approval (using assumed amounts) ---
+        // --- Repayment Approval ---
         if (totalAmount0ToRepay > 0) {
              console.log("Checking Token0 balance...");
              uint currentToken0Balance = IERC20(token0).balanceOf(address(this));
              console.log("Current Token0 Balance:", currentToken0Balance);
              require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
              console.log("Token0 balance sufficient. Approving pool for Token0...");
-             IERC20(token0).approve(poolAddress, totalAmount0ToRepay); // Approve pool (msg.sender)
+             IERC20(token0).approve(msg.sender, totalAmount0ToRepay);
              console.log("Token0 Approved.");
         }
 
         if (totalAmount1ToRepay > 0) {
              console.log("Checking Token1 balance...");
              uint currentToken1Balance = IERC20(token1).balanceOf(address(this));
-             console.log("Current Token1 Balance:", currentToken1Balance); // Log balance BEFORE check
-             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment"); // Balance check
-             console.log("Token1 balance sufficient. Approving pool for Token1..."); // Log if check passes
-             IERC20(token1).approve(poolAddress, totalAmount1ToRepay); // Approve pool (msg.sender)
-             console.log("Token1 Approved."); // Log if approval done
+             console.log("Current Token1 Balance:", currentToken1Balance);
+             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
+             console.log("Token1 balance sufficient. Approving pool for Token1...");
+             IERC20(token1).approve(msg.sender, totalAmount1ToRepay);
+             console.log("Token1 Approved.");
         }
 
-        console.log("--- Exiting FULL uniswapV3FlashCallback ---"); // Log end of callback
+        console.log("--- Exiting FULL+DATA uniswapV3FlashCallback ---");
     }
 
 
     // --- Initiate Flash Swap ---
-    // STILL Uses EMPTY bytes data for this test
-    function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external { // _params is unused now
+    // Restore correct data encoding
+    function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external {
         require((_amount0 > 0 && _amount1 == 0) || (_amount1 > 0 && _amount0 == 0), "FlashSwap: Borrow only one token");
 
-        bytes memory emptyData = bytes('0x'); // Pass empty bytes
+        // Prepare the data struct to be passed to the callback
+        FlashCallbackData memory callbackData = FlashCallbackData({
+            amount0Borrowed: _amount0,
+            amount1Borrowed: _amount1,
+            caller: msg.sender,          // Store the original caller's address
+            poolAddress: _poolAddress,   // Store pool address for verification in callback
+            params: _params              // Pass through any extra data
+        });
 
+        // Trigger the flash loan on the specified pool
         IUniswapV3Pool(_poolAddress).flash(
-            address(this),
-            _amount0,
-            _amount1,
-            emptyData // Pass empty bytes
+            address(this),              // Recipient is this contract
+            _amount0,                   // Amount of token0 to borrow
+            _amount1,                   // Amount of token1 to borrow
+            abi.encode(callbackData)    // <<< Encode the STRUCT correctly
         );
+        console.log("Initiated flash with encoded struct data."); // Log initiation
     }
 
     // --- Utility Functions ---
