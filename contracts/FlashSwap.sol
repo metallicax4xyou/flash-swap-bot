@@ -46,12 +46,25 @@ contract FlashSwap is IUniswapV3FlashCallback {
      * @param fee1 The fee amount owed for borrowing token1, calculated by the pool.
      * @param data Arbitrary data passed from the `flash` call, encoded as FlashCallbackData.
      */
+         // --- Uniswap V3 Flash Callback ---
+    // EXTREMELY SIMPLIFIED FOR DEBUGGING - DOES NOT REPAY LOAN
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
-        bytes calldata data
+        bytes calldata data // data is received but unused in this version
     ) external override {
-        console.log("!!! uniswapV3FlashCallback Entered !!!"); // <<< ADD THIS LINE VERY FIRST
+        // Only try to log entry.
+        console.log("!!! MINIMAL uniswapV3FlashCallback Entered !!! Fee0:", fee0, "Fee1:", fee1);
+
+        // --- NO DECODING ---
+        // --- NO SECURITY CHECK ---
+        // --- NO BALANCE CHECKS ---
+        // --- NO APPROVALS ---
+        // --- NO ARBITRAGE ---
+
+        // This callback will DEFINITELY cause the pool to fail repayment checks,
+        // but we want to see if this log message prints AT ALL.
+    }
         
         // Decode the data we passed from initiateFlashSwap
         FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData));
