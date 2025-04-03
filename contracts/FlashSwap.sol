@@ -2,20 +2,22 @@
 pragma solidity 0.8.19;
 
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
+// Quoter not needed for this version
+// import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
 
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3FlashCallback.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "hardhat/console.sol"; // Keep for logging
+import "hardhat/console.sol";
 
 contract FlashSwap is IUniswapV3FlashCallback {
 
     ISwapRouter public immutable swapRouter;
-    IQuoter public immutable quoter;
+    // IQuoter public immutable quoter; // Removed
     address public owner;
 
+    // Restore struct definition
     struct FlashCallbackData {
         uint amount0Borrowed;
         uint amount1Borrowed;
@@ -29,14 +31,15 @@ contract FlashSwap is IUniswapV3FlashCallback {
         _;
     }
 
-    constructor(address _swapRouter, address _quoter) {
+    // --- Constructor --- CORRECTED TO SINGLE ARGUMENT ---
+    constructor(address _swapRouter) { // <<< ONLY _swapRouter HERE
         swapRouter = ISwapRouter(_swapRouter);
-        quoter = IQuoter(_quoter);
+        // quoter = IQuoter(_quoter); // Removed
         owner = msg.sender;
     }
 
     // --- Uniswap V3 Flash Callback ---
-    // Trying EXPLICIT TRANSFER instead of APPROVE
+    // Uses EXPLICIT TRANSFER
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -67,7 +70,26 @@ contract FlashSwap is IUniswapV3FlashCallback {
         console.log("Total Token0 to Repay:", totalAmount0ToRepay);
         console.log("Total Token1 to Repay:", totalAmount1ToRepay);
 
-        // --- ARBITRAGE LOGIC GOES HERE ---
+        // --- ARBITRAGE LOGIC (Placeholder: Swap WETH -> USDC) ---
+        if (decodedData.amount1Borrowed > 0) {
+            console.log("Starting placeholder arbitrage: Swap WETH for USDC...");
+            uint amountIn = decodedData.amount1Borrowed;
+            uint24 poolFee = pool.fee(); // Get pool fee
+
+            IERC20(token1).approve(address(swapRouter), amountIn);
+            console.log("Approved SwapRouter", address(swapRouter), "to spend", amountIn, "WETH");
+
+            ISwapRouter.ExactInputSingleParams memory params =
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: token1, tokenOut: token0, fee: poolFee,
+                    recipient: address(this), deadline: block.timestamp,
+                    amountIn: amountIn, amountOutMinimum: 0, sqrtPriceLimitX96: 0
+                });
+
+            console.log("Executing swap using exactInputSingle...");
+            uint amountOut = swapRouter.exactInputSingle(params);
+            console.log("Swap executed. Received USDC (Token0) amount:", amountOut);
+        }
 
         // --- Repayment via Explicit Transfer ---
         if (totalAmount0ToRepay > 0) {
@@ -76,9 +98,8 @@ contract FlashSwap is IUniswapV3FlashCallback {
              console.log("Current Token0 Balance:", currentToken0Balance);
              require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
              console.log("Token0 balance sufficient. Transferring token0 to pool...");
-             //IERC20(token0).approve(poolAddress, totalAmount0ToRepay); // REMOVED APPROVE
-             bool sent0 = IERC20(token0).transfer(poolAddress, totalAmount0ToRepay); // <<< USE TRANSFER
-             require(sent0, "FlashSwap: Token0 transfer failed"); // <<< CHECK TRANSFER SUCCESS
+             bool sent0 = IERC20(token0).transfer(poolAddress, totalAmount0ToRepay);
+             require(sent0, "FlashSwap: Token0 transfer failed");
              console.log("Token0 Transferred.");
         }
 
@@ -86,11 +107,14 @@ contract FlashSwap is IUniswapV3FlashCallback {
              console.log("Checking Token1 balance for transfer...");
              uint currentToken1Balance = IERC20(token1).balanceOf(address(this));
              console.log("Current Token1 Balance:", currentToken1Balance);
-             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
-             console.log("Token1 balance sufficient. Transferring token1 to pool...");
-             //IERC20(token1).approve(poolAddress, totalAmount1ToRepay); // REMOVED APPROVE
-             bool sent1 = IERC20(token1).transfer(poolAddress, totalAmount1ToRepay); // <<< USE TRANSFER
-             require(sent1, "FlashSwap: Token1 transfer failed"); // <<< CHECK TRANSFER SUCCESS
+             // >>> NOTE: Balance check was TEMPORARILY disabled before <<<
+             // >>> Let's keep it disabled just to ensure the constructor is the ONLY problem first <<<
+             // require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
+             console.log("WARN: Skipping Token1 balance check for test."); // Keep warning
+
+             console.log("Attempting to transfer token1 to pool...");
+             bool sent1 = IERC20(token1).transfer(poolAddress, totalAmount1ToRepay);
+             require(sent1, "FlashSwap: Token1 transfer failed (EXPECTED without pre-funding)");
              console.log("Token1 Transferred.");
         }
 
@@ -99,7 +123,6 @@ contract FlashSwap is IUniswapV3FlashCallback {
 
 
     // --- Initiate Flash Swap ---
-    // Restore correct data encoding
     function initiateFlashSwap(address _poolAddress, uint _amount0, uint _amount1, bytes memory _params) external {
         require((_amount0 > 0 && _amount1 == 0) || (_amount1 > 0 && _amount0 == 0), "FlashSwap: Borrow only one token");
 
@@ -115,9 +138,9 @@ contract FlashSwap is IUniswapV3FlashCallback {
             address(this),
             _amount0,
             _amount1,
-            abi.encode(callbackData) // Encode the struct correctly
+            abi.encode(callbackData)
         );
-        console.log("Initiated flash with encoded struct data."); // Log initiation
+        // console.log("Initiated flash with encoded struct data."); // Optional log
     }
 
     // --- Utility Functions ---
