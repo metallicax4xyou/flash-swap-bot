@@ -31,8 +31,9 @@ async function main() {
 
     // 4. Deploy the FlashSwap Contract
     console.log("Deploying FlashSwap...");
-    // Ensure only ONE argument is passed to match the current constructor
-    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // <<< CORRECTED CALL
+    // Ensure only ONE argument is passed to match the current constructor in FlashSwap.sol
+    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // <<< VERIFY THIS LINE
+    const flashSwapAddress = flashSwap.target;
     console.log("FlashSwap deployed to:", flashSwapAddress);
 
     // --- NO Pre-funding of the FlashSwap contract ---
@@ -79,7 +80,7 @@ async function main() {
         console.log("⚠️ Flash swap SUCCEEDED? (UNEXPECTED - transfer should have failed due to insufficient funds)");
 
     } catch (error) {
-        console.error("\n--- Flash swap transaction failed (EXPECTED) ---"); // Now expected failure
+        console.error("\n--- Flash swap transaction failed (EXPECTED) ---"); // Expecting failure
         console.error("Error executing initiateFlashSwap:");
         if (error.transactionHash) {
              console.error("  Transaction Hash:", error.transactionHash);
