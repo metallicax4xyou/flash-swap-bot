@@ -26,21 +26,20 @@ async function main() {
     // 2. Get Contract Factory
     const FlashSwap = await hre.ethers.getContractFactory("FlashSwap");
 
-    // 3. Define Uniswap V3 Router Address (Mainnet) - Quoter not needed for this contract version
+    // 3. Define Uniswap V3 Router Address (Mainnet)
     const uniswapV3RouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-    // const uniswapV3QuoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // Removed from constructor
 
     // 4. Deploy the FlashSwap Contract
     console.log("Deploying FlashSwap...");
-    // const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress, uniswapV3QuoterAddress); // Old constructor
-    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // New constructor (only router)
+    // Ensure only ONE argument is passed to match the current constructor
+    const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress); // <<< CORRECTED CALL
     const flashSwapAddress = flashSwap.target;
     console.log("FlashSwap deployed to:", flashSwapAddress);
 
-    // --- NO Pre-funding of the FlashSwap contract --- <<< CHANGE IS HERE
-    const WETH_ABI = ["function balanceOf(address) view returns (uint)"]; // Only need balanceOf now
-    const wethContract = new hre.ethers.Contract(WETH_ADDRESS, WETH_ABI, deployer); // Use deployer provider
-    console.log(`FlashSwap contract initial WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(flashSwapAddress), 18)} WETH`); // Verify it's 0 or near 0
+    // --- NO Pre-funding of the FlashSwap contract ---
+    const WETH_ABI = ["function balanceOf(address) view returns (uint)"];
+    const wethContract = new hre.ethers.Contract(WETH_ADDRESS, WETH_ABI, hre.ethers.provider); // Use default provider
+    console.log(`FlashSwap contract initial WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(flashSwapAddress), 18)} WETH`);
 
 
     // 5. Define Pool Address
@@ -76,7 +75,6 @@ async function main() {
         console.log("Waiting for transaction confirmation...");
         const receipt = await tx.wait();
         console.log("Transaction confirmed in block:", receipt.blockNumber);
-        // Check final balance (will be 0 or dust if transfer failed as expected)
         const finalContractWeth = await wethContract.balanceOf(flashSwapAddress);
         console.log(`FlashSwap contract final WETH balance: ${hre.ethers.formatUnits(finalContractWeth, 18)} WETH`);
         console.log("⚠️ Flash swap SUCCEEDED? (UNEXPECTED - transfer should have failed due to insufficient funds)");
@@ -87,18 +85,16 @@ async function main() {
         if (error.transactionHash) {
              console.error("  Transaction Hash:", error.transactionHash);
         }
-        let reason = error.reason; // Hardhat often populates this directly now
-        if (error.data && !reason) { // Check error.data if reason is missing
+        let reason = error.reason;
+        if (error.data && !reason) {
              try {
-                // Attempt to decode standard Solidity error (Error(string))
-                const ERROR_SELECTOR = "0x08c379a0"; // Keccak256("Error(string)")[:4]
+                const ERROR_SELECTOR = "0x08c379a0";
                 if (error.data.startsWith(ERROR_SELECTOR)) {
                     reason = hre.ethers.AbiCoder.defaultAbiCoder().decode(['string'], "0x" + error.data.substring(10))[0];
                 } else {
-                     // Try simple UTF-8 decoding as fallback
                      reason = hre.ethers.toUtf8String("0x" + error.data.substring(138));
                 }
-             } catch (e) { /* Ignore decoding errors */ }
+             } catch (e) { /* Ignore */ }
         }
          if (reason) {
              console.error("  Revert Reason:", reason);
@@ -108,7 +104,7 @@ async function main() {
                  console.error("  Revert Reason:", reason);
              } catch (e) { /* Ignore */ }
         }
-        if (!reason) { // Fallback if no specific reason found
+        if (!reason) {
             console.error("  Error message:", error.message);
         }
         console.error("\n  This failure is EXPECTED because the contract starts with no WETH, performs a swap (losing fees), and cannot repay the loan + fee.");
