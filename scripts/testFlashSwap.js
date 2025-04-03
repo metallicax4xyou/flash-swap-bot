@@ -36,25 +36,25 @@ async function main() {
     const flashSwapAddress = flashSwap.target;
     console.log("FlashSwap deployed to:", flashSwapAddress);
 
-    // --- Fund the FlashSwap contract with some WETH (to cover potential fees initially) ---
-    // In a real scenario, profit covers fees, but for testing, let's give it some buffer.
-    // We need the WETH contract interface to transfer.
+    // --- Fund the FlashSwap contract with enough WETH to cover loan + fees for testing ---
     const WETH_ABI = ["function transfer(address to, uint amount) returns (bool)", "function deposit() payable", "function balanceOf(address) view returns (uint)"];
     const wethContract = new hre.ethers.Contract(WETH_ADDRESS, WETH_ABI, deployer);
 
-    // Get some WETH if deployer doesn't have any (by wrapping ETH)
+    // Get some WETH for deployer if needed
     const deployerWethBalance = await wethContract.balanceOf(deployer.address);
     console.log(`Deployer WETH balance: ${hre.ethers.formatUnits(deployerWethBalance, 18)} WETH`);
-    if (deployerWethBalance < hre.ethers.parseUnits("0.1", 18)) {
+    if (deployerWethBalance < hre.ethers.parseUnits("1.2", 18)) { // Ensure deployer has enough to send
         console.log("Getting some WETH for deployer by wrapping ETH...");
-        const wrapTx = await wethContract.deposit({ value: hre.ethers.parseUnits("1", 18) }); // Wrap 1 ETH
+        const wrapAmount = hre.ethers.parseUnits("2", 18); // Wrap 2 ETH to be safe
+        const wrapTx = await wethContract.deposit({ value: wrapAmount });
         await wrapTx.wait();
         console.log(`New Deployer WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(deployer.address), 18)} WETH`);
     }
-     // Send a small amount of WETH to the FlashSwap contract to cover potential fees
-    const feeAmount = hre.ethers.parseUnits("0.01", 18); // 0.01 WETH
-    console.log(`Transferring ${hre.ethers.formatUnits(feeAmount, 18)} WETH to FlashSwap contract for fee buffer...`);
-    const transferTx = await wethContract.transfer(flashSwapAddress, feeAmount);
+
+    // Send 1.1 WETH to the FlashSwap contract
+    const initialFundingAmount = hre.ethers.parseUnits("1.1", 18); // <<< CHANGE IS HERE (1.1 WETH)
+    console.log(`Transferring ${hre.ethers.formatUnits(initialFundingAmount, 18)} WETH to FlashSwap contract...`);
+    const transferTx = await wethContract.transfer(flashSwapAddress, initialFundingAmount); // <<< CHANGE IS HERE
     await transferTx.wait();
     console.log(`FlashSwap contract WETH balance: ${hre.ethers.formatUnits(await wethContract.balanceOf(flashSwapAddress), 18)} WETH`);
 
@@ -62,18 +62,18 @@ async function main() {
     // 5. Define Pool Address
     const poolAddress = "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"; // USDC/WETH 0.05%
 
-    // --- Get Pool Tokens for clarity ---
+    // --- Get Pool Tokens ---
     const poolContract = await hre.ethers.getContractAt("IUniswapV3Pool", poolAddress);
-    const token0Address = await poolContract.token0(); // Should be USDC
-    const token1Address = await poolContract.token1(); // Should be WETH
+    const token0Address = await poolContract.token0();
+    const token1Address = await poolContract.token1();
     console.log(`Pool ${poolAddress} tokens: Token0=${token0Address} (USDC), Token1=${token1Address} (WETH)`);
 
     // 6. Define Amounts to Borrow
-    const amount0ToBorrow = 0n; // Borrowing 0 USDC (Token0)
-    const amount1ToBorrow = hre.ethers.parseUnits("1", 18); // Borrow 1 WETH (Token1)
-    const params = '0x'; // No extra parameters for now
+    const amount0ToBorrow = 0n; // 0 USDC
+    const amount1ToBorrow = hre.ethers.parseUnits("1", 18); // 1 WETH
+    const params = '0x'; // No extra parameters
 
-    console.log(`Attempting to borrow: ${hre.ethers.formatUnits(amount0ToBorrow, 6)} USDC (Token0)`); // USDC has 6 decimals
+    console.log(`Attempting to borrow: ${hre.ethers.formatUnits(amount0ToBorrow, 6)} USDC (Token0)`);
     console.log(`Attempting to borrow: ${hre.ethers.formatUnits(amount1ToBorrow, 18)} WETH (Token1)`);
 
 
@@ -84,17 +84,21 @@ async function main() {
 
         const tx = await flashSwap.initiateFlashSwap(
             poolAddress,
-            amount0ToBorrow, // _amount0
-            amount1ToBorrow, // _amount1
-            params           // _params
+            amount0ToBorrow,
+            amount1ToBorrow,
+            params
         );
         console.log("Transaction sent:", tx.hash);
         console.log("Waiting for transaction confirmation...");
         const receipt = await tx.wait();
         console.log("Transaction confirmed in block:", receipt.blockNumber);
-        console.log("Flash swap apparently succeeded! (This is unexpected without arbitrage profit)");
+        // Check final balance of FlashSwap contract
+        const finalContractWeth = await wethContract.balanceOf(flashSwapAddress);
+        console.log(`FlashSwap contract final WETH balance: ${hre.ethers.formatUnits(finalContractWeth, 18)} WETH`);
+        console.log("✅ Flash swap SUCCEEDED! (Because we pre-funded the contract)");
+
     } catch (error) {
-        console.error("\n--- Flash swap transaction failed (likely expected) ---");
+        console.error("\n--- Flash swap transaction failed (UNEXPECTED with pre-funding) ---");
         console.error("Error executing initiateFlashSwap:");
         // Try to get more detailed revert reason
         if (error.transactionHash) {
@@ -102,11 +106,9 @@ async function main() {
         }
         let reason = error.reason;
         if (!reason && error.data) {
-            // If no reason, try decoding internal revert data (may require specific error ABI)
              try {
-                 // Attempt simple string decoding (often works for require messages)
-                 reason = hre.ethers.toUtf8String("0x" + error.data.substring(138)); // Remove function selector and offset/length data
-             } catch (e) { /* Ignore decoding error */ }
+                 reason = hre.ethers.toUtf8String("0x" + error.data.substring(138));
+             } catch (e) { /* Ignore */ }
         }
          if (reason) {
              console.error("  Revert Reason:", reason);
@@ -114,15 +116,12 @@ async function main() {
              try {
                  reason = error.message.split("reverted with reason string '")[1].split("'")[0];
                  console.error("  Revert Reason:", reason);
-             } catch (e) { /* Ignore extraction error */ }
+             } catch (e) { /* Ignore */ }
         }
-        // Fallback to full message if reason couldn't be extracted
         if (!reason) {
             console.error("  Error message:", error.message);
         }
-
-        console.error("\n  This failure is likely expected because the callback currently lacks arbitrage profit to cover the fee (or balance checks fail).");
-        console.error("  Check the revert reason above. 'TF' often means pool failure (likely insufficient funds on repayment). 'FlashSwap: Insufficient...' means our contract's check failed.");
+        console.error("\n  This should have succeeded with the pre-funding. Check contract logic (approvals, balance checks) or pool state.");
         console.error("------------------------------------------------------\n");
     }
 }
