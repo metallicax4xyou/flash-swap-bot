@@ -1,20 +1,22 @@
 {
     "name": "flash-swap-bot",
-      "version": "1.0.0",
-        "description": "A simple Uniswap V3 flash swap arbitrage bot for educational purposes.",
-          "main": "index.js",
-            "scripts": {
-                "test": "echo \"Error: no test specified\" && exit 1"
-                  },
-                    "keywords": [],
-                      "author": "",
-                        "license": "ISC",
-                          "devDependencies": {
-                              "@nomicfoundation/hardhat-toolbox": "^2.0.2",
-                                  "@nomiclabs/hardhat-ethers": "^2.2.3",
-                                      "@uniswap/v3-core": "^1.0.1",
-                                          "@uniswap/v3-periphery": "^1.4.4",
-                                              "hardhat": "^2.22.17",
-                                                  "hardhat-deploy": "^0.11.45"
-                                                    }
-                                                    }
+    "version": "1.0.0",
+    "description": "A simple Uniswap V3 flash swap arbitrage bot for educational purposes.",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@nomicfoundation/hardhat-toolbox": "^2.0.2",
+        "@nomiclabs/hardhat-ethers": "^2.2.3",
+        "@openzeppelin/contracts": "^4.9.6",
+        "@uniswap/v3-core": "^1.0.1",
+        "@uniswap/v3-periphery": "^1.4.4",
+        "dotenv": "^16.4.7",
+        "hardhat": "^2.22.17",
+        "hardhat-deploy": "^0.11.45"
+    }
+}
