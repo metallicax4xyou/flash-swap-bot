@@ -77,7 +77,9 @@ contract FlashSwap is IUniswapV3FlashCallback {
             uint24 poolFee = pool.fee(); // Get pool fee
 
             IERC20(token1).approve(address(swapRouter), amountIn);
-            console.log("Approved SwapRouter", address(swapRouter), "to spend", amountIn, "WETH");
+            // --- SIMPLIFIED LOG ---
+            console.log("Approved SwapRouter for WETH amount:", amountIn); // <<< CORRECTED LOG
+            // --- END SIMPLIFIED LOG ---
 
             ISwapRouter.ExactInputSingleParams memory params =
                 ISwapRouter.ExactInputSingleParams({
@@ -92,7 +94,6 @@ contract FlashSwap is IUniswapV3FlashCallback {
                  console.log("Swap executed. Received USDC (Token0) amount:", amountOut);
             } catch Error(string memory reason) {
                  console.log("Swap Failed! Reason:", reason);
-                 // If swap fails, we definitely won't have funds to repay, but let callback continue to see transfer fail
             } catch (bytes memory lowLevelData) {
                  console.log("Swap Failed! Low level data:", lowLevelData);
             }
@@ -104,7 +105,6 @@ contract FlashSwap is IUniswapV3FlashCallback {
              console.log("Checking Token0 balance for transfer...");
              uint currentToken0Balance = IERC20(token0).balanceOf(address(this));
              console.log("Current Token0 Balance:", currentToken0Balance);
-             // Balance check for Token0 (USDC received from swap) - keep this check enabled
              require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
              console.log("Token0 balance sufficient. Transferring token0 to pool...");
              bool sent0 = IERC20(token0).transfer(poolAddress, totalAmount0ToRepay);
@@ -115,10 +115,10 @@ contract FlashSwap is IUniswapV3FlashCallback {
         if (totalAmount1ToRepay > 0) {
              console.log("Checking Token1 balance for transfer...");
              uint currentToken1Balance = IERC20(token1).balanceOf(address(this));
-             console.log("Current Token1 Balance:", currentToken1Balance); // Will be < amount borrowed after swap fees
+             console.log("Current Token1 Balance:", currentToken1Balance);
              // >>> BALANCE CHECK IS STILL COMMENTED OUT FOR THIS TEST <<<
              // require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 for repayment");
-             console.log("WARN: Skipping Token1 balance check for test.");
+             console.log("WARN: Skipping Token1 balance check for test."); // Keep warning
 
              console.log("Attempting to transfer token1 to pool...");
              bool sent1 = IERC20(token1).transfer(poolAddress, totalAmount1ToRepay);
