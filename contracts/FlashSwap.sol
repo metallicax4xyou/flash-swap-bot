@@ -57,13 +57,16 @@ contract FlashSwap is IUniswapV3FlashCallback {
 
         // Decode the arbitrage parameters passed by the initiator
         ArbitrageParams memory arbParams = abi.decode(decodedInternalData.params, (ArbitrageParams));
-        console.log("Decoded Arb Params: Intermediate=", arbParams.tokenIntermediate, "PoolA=", arbParams.poolA, "PoolB=", arbParams.poolB);
+        // --- Split console log ---
+        console.log("Decoded Arb Params: Intermediate=", arbParams.tokenIntermediate);
+        console.log("  PoolA=", arbParams.poolA);
+        console.log("  PoolB=", arbParams.poolB);
+        // --- End Split ---
 
         address loanPoolAddress = msg.sender;
         IUniswapV3Pool loanPool = IUniswapV3Pool(loanPoolAddress);
-        // Assume loan happens on Pool A (WETH/USDC) for this structure
-        address tokenBorrowed; // The asset we borrowed (WETH or USDC)
-        address tokenToRepay;  // The other asset in the pair
+        address tokenBorrowed;
+        address tokenToRepay;
         uint amountBorrowed;
         uint totalAmountToRepay;
 
@@ -72,20 +75,19 @@ contract FlashSwap is IUniswapV3FlashCallback {
             tokenToRepay = loanPool.token0();  // USDC
             amountBorrowed = decodedInternalData.amount1Borrowed;
             totalAmountToRepay = amountBorrowed + fee1;
-            require(arbParams.tokenIntermediate == tokenToRepay, "Param intermediate token mismatch"); // Ensure params match borrowed token logic
+            require(arbParams.tokenIntermediate == tokenToRepay, "Param intermediate token mismatch");
         } else {
             tokenBorrowed = loanPool.token0(); // USDC
             tokenToRepay = loanPool.token1();  // WETH
             amountBorrowed = decodedInternalData.amount0Borrowed;
             totalAmountToRepay = amountBorrowed + fee0;
-             require(arbParams.tokenIntermediate == tokenBorrowed, "Param intermediate token mismatch"); // This logic might need adjustment depending on arb direction
-             // For now, we focus on WETH borrow case
+             require(arbParams.tokenIntermediate == tokenBorrowed, "Param intermediate token mismatch");
              revert("Arbitrage logic currently only supports borrowing Token1 (WETH)");
         }
 
         console.log("Loan Pool:", loanPoolAddress);
         console.log("Borrowed Token:", tokenBorrowed);
-        console.log("Intermediate Token:", arbParams.tokenIntermediate);
+        // console.log("Intermediate Token:", arbParams.tokenIntermediate); // Already logged
         console.log("Amount Borrowed:", amountBorrowed);
         console.log("Total to Repay:", totalAmountToRepay);
 
@@ -117,10 +119,9 @@ contract FlashSwap is IUniswapV3FlashCallback {
         } catch Error(string memory reason) {
              console.log("Swap 1 Failed! Reason:", reason);
              revert("Swap 1 failed, cannot continue arbitrage");
-        } catch { // Catch low-level failures
+        } catch {
              revert("Swap 1 failed (low level), cannot continue arbitrage");
         }
-        // No need for require(>0) as amountOutMinimum handles it
 
 
         // --- Swap 2: Intermediate Token -> Borrowed Token on Pool B ---
@@ -147,7 +148,7 @@ contract FlashSwap is IUniswapV3FlashCallback {
         } catch Error(string memory reason) {
              console.log("Swap 2 Failed! Reason:", reason);
              revert("Swap 2 failed, cannot complete arbitrage");
-        } catch { // Catch low-level failures
+        } catch {
             revert("Swap 2 failed (low level), cannot complete arbitrage");
         }
 
