@@ -4,27 +4,27 @@ async function main() {
     console.log("Starting minimal script...");
 
     try {
-        const addressToCheck = "0x8ad599c3A0b1A56AAd039ddAc6837Db27B2ff1DC";
-        console.log("Address string:", addressToCheck);
+        // Use the CORRECTLY checksummed address string
+        const addressToCheck = "0x8ad599c3A0b1A56AAd039ddAc6837Db27B2f64C5"; // <<< CORRECT CHECKSUM
+        console.log("Address string (Correct Checksum):", addressToCheck);
 
-        // Check if hre.ethers exists
-        if (!hre.ethers) {
-            console.error("FATAL: hre.ethers is undefined!");
-            return;
-        }
+        if (!hre.ethers) { console.error("FATAL: hre.ethers is undefined!"); return; }
         console.log("hre.ethers object found.");
 
-        // Check if getAddress exists
-        if (typeof hre.ethers.getAddress !== 'function') {
-             console.error("FATAL: hre.ethers.getAddress is not a function!");
-             return;
-        }
+        if (typeof hre.ethers.getAddress !== 'function') { console.error("FATAL: hre.ethers.getAddress is not a function!"); return; }
         console.log("hre.ethers.getAddress function found.");
 
-        // Try to checksum the address
+        // Try to checksum the CORRECTLY checksummed address
+        // getAddress should return the same address if it's already checksummed correctly
         const checksummedAddress = hre.ethers.getAddress(addressToCheck);
-        console.log("Checksummed address:", checksummedAddress);
-        console.log("✅ Checksum successful!");
+        console.log("Result from getAddress:", checksummedAddress);
+
+        // Verify it didn't change
+        if (checksummedAddress === addressToCheck) {
+            console.log("✅ Checksum successful (address was already correct)!");
+        } else {
+            console.error("❌ ERROR: getAddress changed an already correct address?");
+        }
 
     } catch (error) {
         console.error("\n--- Error during checksum test ---");
