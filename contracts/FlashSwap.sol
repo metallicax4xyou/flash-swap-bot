@@ -2,12 +2,8 @@
 pragma solidity 0.8.19;
 
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-// Quoter not needed for this version
-// import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
-
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3FlashCallback.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
 
@@ -16,148 +12,161 @@ contract FlashSwap is IUniswapV3FlashCallback {
     ISwapRouter public immutable swapRouter;
     address public owner;
 
+    // Struct for data passed internally from initiateFlashSwap to callback
     struct FlashCallbackData {
         uint amount0Borrowed;
         uint amount1Borrowed;
         address caller;
         address poolAddress; // Pool where flash loan originated
-        bytes params;        // For future use (passing target pool addresses etc.)
+        bytes params;        // Encoded arbitrage parameters from the user
     }
+
+    // Struct to represent the decoded arbitrage parameters
+    struct ArbitrageParams {
+        address tokenIntermediate; // The token to swap to in the middle (e.g., USDC)
+        address poolA;             // Address of pool for Swap 1 (e.g., WETH->USDC)
+        address poolB;             // Address of pool for Swap 2 (e.g., USDC->WETH)
+        uint24 feeA;               // Fee tier for Pool A
+        uint24 feeB;               // Fee tier for Pool B
+        uint amountOutMinimum1;    // Min intermediate token expected from Swap 1
+        uint amountOutMinimum2;    // Min final token expected from Swap 2
+    }
+
 
     modifier onlyOwner() {
         require(msg.sender == owner, "FlashSwap: Not owner");
         _;
     }
 
-    // --- Constructor ---
     constructor(address _swapRouter) {
         swapRouter = ISwapRouter(_swapRouter);
         owner = msg.sender;
     }
 
     // --- Uniswap V3 Flash Callback ---
-    // ADDED TWO-POOL SWAP LOGIC
+    // DECODES PARAMS FOR DYNAMIC ARBITRAGE ROUTE
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
-        bytes calldata data // Expecting encoded FlashCallbackData
+        bytes calldata data
     ) external override {
-        console.log("!!! TWO-SWAP TEST Callback Entered !!! Fee0:", fee0, "Fee1:", fee1);
+        console.log("!!! DYNAMIC ARB Callback Entered !!! Fee0:", fee0, "Fee1:", fee1);
 
-        FlashCallbackData memory decodedData = abi.decode(data, (FlashCallbackData));
-        require(msg.sender == decodedData.poolAddress, "FlashSwap: Callback from unexpected pool"); // Ensure callback is from the loan pool
+        FlashCallbackData memory decodedInternalData = abi.decode(data, (FlashCallbackData));
+        require(msg.sender == decodedInternalData.poolAddress, "FlashSwap: Callback from unexpected pool");
 
-        address loanPoolAddress = msg.sender; // Pool that initiated the flash loan (Pool A in our test case)
+        // Decode the arbitrage parameters passed by the initiator
+        ArbitrageParams memory arbParams = abi.decode(decodedInternalData.params, (ArbitrageParams));
+        console.log("Decoded Arb Params: Intermediate=", arbParams.tokenIntermediate, "PoolA=", arbParams.poolA, "PoolB=", arbParams.poolB);
+
+        address loanPoolAddress = msg.sender;
         IUniswapV3Pool loanPool = IUniswapV3Pool(loanPoolAddress);
-        address token0 = loanPool.token0(); // USDC for pool 0x88e6...
-        address token1 = loanPool.token1(); // WETH for pool 0x88e6...
+        // Assume loan happens on Pool A (WETH/USDC) for this structure
+        address tokenBorrowed; // The asset we borrowed (WETH or USDC)
+        address tokenToRepay;  // The other asset in the pair
+        uint amountBorrowed;
+        uint totalAmountToRepay;
 
-        uint totalAmount0ToRepay = decodedData.amount0Borrowed + fee0;
-        uint totalAmount1ToRepay = decodedData.amount1Borrowed + fee1; // Need to repay borrowed WETH + fee1
+        if(decodedInternalData.amount1Borrowed > 0) {
+            tokenBorrowed = loanPool.token1(); // WETH
+            tokenToRepay = loanPool.token0();  // USDC
+            amountBorrowed = decodedInternalData.amount1Borrowed;
+            totalAmountToRepay = amountBorrowed + fee1;
+            require(arbParams.tokenIntermediate == tokenToRepay, "Param intermediate token mismatch"); // Ensure params match borrowed token logic
+        } else {
+            tokenBorrowed = loanPool.token0(); // USDC
+            tokenToRepay = loanPool.token1();  // WETH
+            amountBorrowed = decodedInternalData.amount0Borrowed;
+            totalAmountToRepay = amountBorrowed + fee0;
+             require(arbParams.tokenIntermediate == tokenBorrowed, "Param intermediate token mismatch"); // This logic might need adjustment depending on arb direction
+             // For now, we focus on WETH borrow case
+             revert("Arbitrage logic currently only supports borrowing Token1 (WETH)");
+        }
 
         console.log("Loan Pool:", loanPoolAddress);
-        console.log("Token0 (USDC):", token0);
-        console.log("Token1 (WETH):", token1);
-        console.log("Total Token1 to Repay:", totalAmount1ToRepay);
-
-        // --- ARBITRAGE LOGIC (WETH -> USDC on Pool A, then USDC -> WETH on Pool B) ---
-        if (decodedData.amount1Borrowed > 0) { // If we borrowed WETH (Token1)
-            console.log("Starting two-pool arbitrage simulation...");
-            uint amountInWETH = decodedData.amount1Borrowed;
-
-            // --- Define Pool Addresses and Fees (Hardcoded for test) ---
-            address poolA_WETH_USDC = loanPoolAddress; // Use the loan pool for the first swap
-            // FIX: Use correct checksum for pool address
-            address poolB_USDC_WETH = 0x8AD599c3A0b1A56aAD039dDaC6837db27b2ff1Dc; // 0.3% Pool for second swap
-            uint24 feeA = loanPool.fee(); // Should be 500 (0.05%)
-            uint24 feeB = 3000; // Fee for 0.3% pool (must match poolB!)
-
-            console.log("Pool A (WETH->USDC):", poolA_WETH_USDC, "Fee:", feeA);
-            console.log("Pool B (USDC->WETH):", poolB_USDC_WETH, "Fee:", feeB);
-
-            // --- Swap 1: WETH -> USDC on Pool A ---
-            IERC20(token1).approve(address(swapRouter), amountInWETH);
-            console.log("Approved SwapRouter for WETH amount:", amountInWETH);
-
-            ISwapRouter.ExactInputSingleParams memory params1 =
-                ISwapRouter.ExactInputSingleParams({
-                    tokenIn: token1, tokenOut: token0, fee: feeA, // Pool A
-                    recipient: address(this), deadline: block.timestamp,
-                    amountIn: amountInWETH, amountOutMinimum: 0, sqrtPriceLimitX96: 0
-                });
-
-            console.log("Executing Swap 1 (WETH -> USDC)...");
-            uint amountOutUSDC;
-            try swapRouter.exactInputSingle(params1) returns (uint usdcReceived) {
-                 amountOutUSDC = usdcReceived;
-                 console.log("Swap 1 executed. Received USDC (Token0) amount:", amountOutUSDC);
-            } catch Error(string memory reason) {
-                 console.log("Swap 1 Failed! Reason:", reason); // Expect LOK if liquidity issue
-                 revert("Swap 1 failed, cannot continue arbitrage"); // Revert if first swap fails
-            } catch (bytes memory lowLevelData) {
-                 // FIX: Remove lowLevelData from console.log arguments
-                 console.log("Swap 1 Failed! Low level data");
-                 revert("Swap 1 failed (low level), cannot continue arbitrage");
-            }
-            require(amountOutUSDC > 0, "Swap 1 returned 0 USDC"); // Sanity check
+        console.log("Borrowed Token:", tokenBorrowed);
+        console.log("Intermediate Token:", arbParams.tokenIntermediate);
+        console.log("Amount Borrowed:", amountBorrowed);
+        console.log("Total to Repay:", totalAmountToRepay);
 
 
-            // --- Swap 2: USDC -> WETH on Pool B ---
-            IERC20(token0).approve(address(swapRouter), amountOutUSDC);
-            console.log("Approved SwapRouter for USDC amount:", amountOutUSDC);
+        // --- ARBITRAGE LOGIC (Using decoded parameters) ---
+        console.log("Starting dynamic arbitrage...");
 
-            ISwapRouter.ExactInputSingleParams memory params2 =
-                ISwapRouter.ExactInputSingleParams({
-                    tokenIn: token0, tokenOut: token1, fee: feeB, // Pool B
-                    recipient: address(this), deadline: block.timestamp,
-                    amountIn: amountOutUSDC, amountOutMinimum: 0, sqrtPriceLimitX96: 0
-                });
+        // --- Swap 1: Borrowed Token -> Intermediate Token on Pool A ---
+        IERC20(tokenBorrowed).approve(address(swapRouter), amountBorrowed);
+        console.log("Approved SwapRouter for Borrowed Token amount:", amountBorrowed);
 
-            console.log("Executing Swap 2 (USDC -> WETH)...");
-            uint finalWETHReceived;
-             try swapRouter.exactInputSingle(params2) returns (uint wethReceived) {
-                 finalWETHReceived = wethReceived;
-                 console.log("Swap 2 executed. Final WETH Received (Token1):", finalWETHReceived);
-            } catch Error(string memory reason) {
-                 console.log("Swap 2 Failed! Reason:", reason);
-                 revert("Swap 2 failed, cannot complete arbitrage"); // Revert if second swap fails
-            } catch (bytes memory lowLevelData) {
-                 // FIX: Remove lowLevelData from console.log arguments
-                 console.log("Swap 2 Failed! Low level data");
-                 revert("Swap 2 failed (low level), cannot complete arbitrage");
-            }
+        ISwapRouter.ExactInputSingleParams memory params1 =
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenBorrowed,
+                tokenOut: arbParams.tokenIntermediate, // Use param
+                fee: arbParams.feeA,                   // Use param
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountBorrowed,
+                amountOutMinimum: arbParams.amountOutMinimum1, // Use param for slippage
+                sqrtPriceLimitX96: 0
+            });
+
+        console.log("Executing Swap 1 on Pool A:", arbParams.poolA);
+        uint amountOutIntermediate;
+        try swapRouter.exactInputSingle(params1) returns (uint intermediateReceived) {
+             amountOutIntermediate = intermediateReceived;
+             console.log("Swap 1 executed. Received Intermediate Token amount:", amountOutIntermediate);
+        } catch Error(string memory reason) {
+             console.log("Swap 1 Failed! Reason:", reason);
+             revert("Swap 1 failed, cannot continue arbitrage");
+        } catch { // Catch low-level failures
+             revert("Swap 1 failed (low level), cannot continue arbitrage");
         }
-        // --- End Arbitrage ---
+        // No need for require(>0) as amountOutMinimum handles it
+
+
+        // --- Swap 2: Intermediate Token -> Borrowed Token on Pool B ---
+        IERC20(arbParams.tokenIntermediate).approve(address(swapRouter), amountOutIntermediate);
+        console.log("Approved SwapRouter for Intermediate Token amount:", amountOutIntermediate);
+
+        ISwapRouter.ExactInputSingleParams memory params2 =
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: arbParams.tokenIntermediate, // Use param
+                tokenOut: tokenBorrowed,              // Swap back to original borrowed token
+                fee: arbParams.feeB,                  // Use param
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountOutIntermediate,
+                amountOutMinimum: arbParams.amountOutMinimum2, // Use param for slippage
+                sqrtPriceLimitX96: 0
+            });
+
+        console.log("Executing Swap 2 on Pool B:", arbParams.poolB);
+        uint finalAmountBorrowedToken;
+         try swapRouter.exactInputSingle(params2) returns (uint finalReceived) {
+             finalAmountBorrowedToken = finalReceived;
+             console.log("Swap 2 executed. Final Borrowed Token Received:", finalAmountBorrowedToken);
+        } catch Error(string memory reason) {
+             console.log("Swap 2 Failed! Reason:", reason);
+             revert("Swap 2 failed, cannot complete arbitrage");
+        } catch { // Catch low-level failures
+            revert("Swap 2 failed (low level), cannot complete arbitrage");
+        }
 
 
         // --- Repayment via Explicit Transfer ---
-        if (totalAmount0ToRepay > 0) { // Should be 0 in this test
-             // ... (Token0 repayment logic - unchanged) ...
-             console.log("Checking Token0 balance for transfer...");
-             uint currentToken0Balance = IERC20(token0).balanceOf(address(this));
-             console.log("Current Token0 Balance:", currentToken0Balance);
-             require(currentToken0Balance >= totalAmount0ToRepay, "FlashSwap: Insufficient token0 for repayment");
-             console.log("Token0 balance sufficient. Transferring token0 to pool...");
-             bool sent0 = IERC20(token0).transfer(loanPoolAddress, totalAmount0ToRepay);
-             require(sent0, "FlashSwap: Token0 transfer failed");
-             console.log("Token0 Transferred.");
-        }
+        console.log("Checking FINAL Borrowed Token balance for transfer...");
+        uint finalBalanceBorrowedToken = IERC20(tokenBorrowed).balanceOf(address(this));
+        console.log("Final Current Borrowed Token Balance:", finalBalanceBorrowedToken);
 
-        if (totalAmount1ToRepay > 0) { // Should be > 0 (WETH repayment)
-             console.log("Checking FINAL Token1 balance for transfer...");
-             uint currentToken1Balance = IERC20(token1).balanceOf(address(this));
-             console.log("Final Current Token1 Balance:", currentToken1Balance); // This will reflect amount after Swap 2
+        // THE CRITICAL CHECK: Did the arbitrage yield enough profit?
+        require(finalBalanceBorrowedToken >= totalAmountToRepay, "FlashSwap: Insufficient funds post-arbitrage for repayment");
 
-             // >>> RE-ENABLE BALANCE CHECK FOR FINAL TEST <<<
-             require(currentToken1Balance >= totalAmount1ToRepay, "FlashSwap: Insufficient token1 post-arbitrage for repayment"); // <<< THIS SHOULD FAIL
+        console.log("Funds sufficient for repayment. Transferring to pool...");
+        bool sent = IERC20(tokenBorrowed).transfer(loanPoolAddress, totalAmountToRepay);
+        require(sent, "FlashSwap: Repayment transfer failed");
+        console.log("Borrowed Token Repayment Transferred.");
 
-             console.log("Token1 balance sufficient for repayment. Transferring token1 to pool..."); // Should not print
-             bool sent1 = IERC20(token1).transfer(loanPoolAddress, totalAmount1ToRepay);
-             require(sent1, "FlashSwap: Token1 transfer failed"); // Should not be reached
-             console.log("Token1 Repayment Transferred."); // Should not print
-        }
 
-        console.log("--- Exiting TWO-SWAP TEST uniswapV3FlashCallback ---"); // Should not print
+        console.log("--- Exiting DYNAMIC ARB uniswapV3FlashCallback ---");
     }
 
 
@@ -170,14 +179,14 @@ contract FlashSwap is IUniswapV3FlashCallback {
             amount1Borrowed: _amount1,
             caller: msg.sender,
             poolAddress: _poolAddress,
-            params: _params // Pass params through (though unused in this version)
+            params: _params // Pass through encoded ArbitrageParams
         });
 
         IUniswapV3Pool(_poolAddress).flash(
             address(this),
             _amount0,
             _amount1,
-            abi.encode(callbackData)
+            abi.encode(callbackData) // Encode the internal data struct
         );
     }
 
