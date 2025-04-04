@@ -1,12 +1,12 @@
 const hre = require("hardhat");
 
-// Uniswap V3 Addresses
-const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on mainnet
-const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC on mainnet
+// Uniswap V3 Addresses - Use getAddress to ensure correct checksum
+const WETH_ADDRESS = hre.ethers.getAddress("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"); // WETH on mainnet
+const USDC_ADDRESS = hre.ethers.getAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"); // USDC on mainnet
 
-// Pool Addresses for Test
-const POOL_A_WETH_USDC_005 = "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"; // Pool for Flash loan and Swap 1 (WETH->USDC)
-const POOL_B_USDC_WETH_030 = "0x8ad599c3A0b1A56AAd039ddAc6837Db27B2ff1DC"; // Pool for Swap 2 (USDC->WETH)
+// Pool Addresses for Test - Use getAddress to ensure correct checksum
+const POOL_A_WETH_USDC_005 = hre.ethers.getAddress("0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"); // Pool for Flash loan and Swap 1 (WETH->USDC)
+const POOL_B_USDC_WETH_030 = hre.ethers.getAddress("0x8ad599c3A0b1A56AAd039ddAc6837Db27B2ff1DC"); // Pool for Swap 2 (USDC->WETH)
 
 // Pool Fees
 const FEE_A = 500;  // 0.05%
@@ -25,7 +25,7 @@ async function main() {
 
 
     const FlashSwap = await hre.ethers.getContractFactory("FlashSwap");
-    const uniswapV3RouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
+    const uniswapV3RouterAddress = hre.ethers.getAddress("0xE592427A0AEce92De3Edee1F18E0157C05861564"); // Also checksum router address
 
     console.log("Deploying FlashSwap...");
     const flashSwap = await FlashSwap.deploy(uniswapV3RouterAddress);
@@ -44,17 +44,18 @@ async function main() {
     const amount1ToBorrow = hre.ethers.parseUnits("1", 18); // 1 WETH
 
     // --- Encode Arbitrage Parameters ---
+    // Ensure all addresses passed to encode are checksummed
     const abiCoder = hre.ethers.AbiCoder.defaultAbiCoder();
     const arbitrageParams = abiCoder.encode(
         ['address', 'address', 'address', 'uint24', 'uint24', 'uint256', 'uint256'],
         [
-            USDC_ADDRESS,           // tokenIntermediate (USDC)
-            POOL_A_WETH_USDC_005,   // poolA (WETH -> USDC)
-            POOL_B_USDC_WETH_030,   // poolB (USDC -> WETH)
-            FEE_A,                  // feeA (0.05%)
-            FEE_B,                  // feeB (0.3%)
-            0,                      // amountOutMinimum1 (No slippage protection for test)
-            0                       // amountOutMinimum2 (No slippage protection for test)
+            USDC_ADDRESS,           // Already checksummed
+            POOL_A_WETH_USDC_005,   // Already checksummed
+            POOL_B_USDC_WETH_030,   // Already checksummed
+            FEE_A,
+            FEE_B,
+            0,                      // amountOutMinimum1
+            0                       // amountOutMinimum2
         ]
     );
     console.log("Encoded Arbitrage Params:", arbitrageParams);
@@ -87,7 +88,7 @@ async function main() {
          if (reason) { console.error("  Revert Reason:", reason); } else if (error.message && error.message.includes("reverted with reason string")) { try { reason = error.message.split("reverted with reason string '")[1].split("'")[0]; console.error("  Revert Reason:", reason); } catch (e) { /* Ignore */ } }
         if (!reason) { console.error("  Error message:", error.message); }
 
-        console.error("\n  This failure is EXPECTED. Look for 'FlashSwap: Insufficient funds post-arbitrage...'");
+        console.error("\n  This failure is EXPECTED. Look for 'FlashSwap: Insufficient funds post-arbitrage...' or 'Swap X failed...'");
         console.error("------------------------------------------------------\n");
     }
 }
