@@ -67,7 +67,8 @@ contract FlashSwap is IUniswapV3FlashCallback {
 
             // --- Define Pool Addresses and Fees (Hardcoded for test) ---
             address poolA_WETH_USDC = loanPoolAddress; // Use the loan pool for the first swap
-            address poolB_USDC_WETH = 0x8ad599c3A0b1A56AAd039ddAc6837Db27B2ff1DC; // 0.3% Pool for second swap
+            // FIX: Use correct checksum for pool address
+            address poolB_USDC_WETH = 0x8AD599c3A0b1A56aAD039dDaC6837db27b2ff1Dc; // 0.3% Pool for second swap
             uint24 feeA = loanPool.fee(); // Should be 500 (0.05%)
             uint24 feeB = 3000; // Fee for 0.3% pool (must match poolB!)
 
@@ -94,7 +95,8 @@ contract FlashSwap is IUniswapV3FlashCallback {
                  console.log("Swap 1 Failed! Reason:", reason); // Expect LOK if liquidity issue
                  revert("Swap 1 failed, cannot continue arbitrage"); // Revert if first swap fails
             } catch (bytes memory lowLevelData) {
-                 console.log("Swap 1 Failed! Low level data:", lowLevelData);
+                 // FIX: Remove lowLevelData from console.log arguments
+                 console.log("Swap 1 Failed! Low level data");
                  revert("Swap 1 failed (low level), cannot continue arbitrage");
             }
             require(amountOutUSDC > 0, "Swap 1 returned 0 USDC"); // Sanity check
@@ -120,7 +122,8 @@ contract FlashSwap is IUniswapV3FlashCallback {
                  console.log("Swap 2 Failed! Reason:", reason);
                  revert("Swap 2 failed, cannot complete arbitrage"); // Revert if second swap fails
             } catch (bytes memory lowLevelData) {
-                 console.log("Swap 2 Failed! Low level data:", lowLevelData);
+                 // FIX: Remove lowLevelData from console.log arguments
+                 console.log("Swap 2 Failed! Low level data");
                  revert("Swap 2 failed (low level), cannot complete arbitrage");
             }
         }
