@@ -18,7 +18,6 @@
         "@nomicfoundation/hardhat-toolbox": "^5.0.0",
         "@nomicfoundation/hardhat-verify": "^2.0.13",
         "@nomicfoundation/ignition-core": "^0.15.10",
-        "@nomiclabs/hardhat-ethers": "^2.2.3",
         "@openzeppelin/contracts": "^4.9.6",
         "@typechain/ethers-v6": "^0.5.1",
         "@typechain/hardhat": "^9.1.0",
